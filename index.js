@@ -6,7 +6,7 @@ const morgan = require("morgan");
 const Person = require("./models/person");
 const cors = require("cors");
 
-app.use(cors());
+app.use(express.static("build"));
 const errorHandler = (error, req, res, next) => {
   console.error(error.message);
 
@@ -21,6 +21,7 @@ const unknownEndpoint = (req, res) => {
   res.status(404).send({ error: "unknown endpoint" });
 };
 
+app.use(cors());
 app.use(bodyparser.json());
 
 morgan.token("person", function(req, res) {
@@ -66,12 +67,14 @@ app.get("/info", (req, res) => {
 });
 
 const genereateId = () => Math.floor(Math.random() * (10000 - 1000 + 1) + 1000);
-const isInPersons = name => {
+
+const inList = name => {
   const persons = [];
-  Person.find({}).then(persons => {
-    persons.concat(person);
-  });
-  console.log(persons.length !== 0);
+  Person.find({})
+    .then(person => {
+      persons.concat(person);
+    })
+    .catch(error => console.log(error));
   if (persons.length !== 0) {
     return Person.find({ name: name }).then(person => person.name === name)
       .length === 0
@@ -82,19 +85,6 @@ const isInPersons = name => {
   }
 };
 
-const findAndReplace = () => {
-  Person.find({ name: body.name }).then(person => {
-    app.put(`/api/persons/${person.id}`, (req, res, next) => {
-      const person_ = { name: person.name, number: body.number };
-      Person.findByIdAndUpdate(person.id, person_, { new: true })
-        .then(updatedPerson => {
-          res.json(updatedPerson.toJSON());
-        })
-        .catch(error => next(error));
-    });
-  });
-  return;
-};
 app.post("/api/persons", (req, res) => {
   const body = req.body;
 
@@ -110,30 +100,31 @@ app.post("/api/persons", (req, res) => {
     return res.status(400).json({
       error: "Number missing"
     });
-  } else if (isInPersons(body.name)) {
-    Person.find({ name: body.name }).then(person => {
-      console.log(person);
-      app.put(`/api/persons/${person.id}`, (req, res, next) => {
-        const person_ = { name: person.name, number: body.number };
-        Person.findByIdAndUpdate(person.id, person_, { new: true })
-          .then(updatedPerson => {
-            res.json(updatedPerson.toJSON());
-          })
-          .catch(error => next(error));
-      });
+  } else if (inList(body.name)) {
+    const oldPerson = [];
+    Person.find({ name: body.name }).then(person => oldPerson.concat(person));
+
+    const newPerson = {
+      name: oldPerson.name,
+      number: body.name
+    };
+
+    Person.findByIdAndUpdate(oldPerson.id, newPerson, { new: true })
+      .then(updatedPerson => {
+        res.json(updatedPerson.toJSON());
+      })
+      .catch(error => next(error));
+  } else {
+    const person = new Person({
+      name: body.name,
+      number: body.number,
+      id: genereateId()
     });
-    return;
+
+    person.save().then(savedPerson => {
+      res.json(savedPerson.toJSON());
+    });
   }
-
-  const person = new Person({
-    name: body.name,
-    number: body.number,
-    id: genereateId()
-  });
-
-  person.save().then(savedPerson => {
-    res.json(savedPerson.toJSON());
-  });
 });
 
 app.delete("/api/persons/:id", (req, res, next) => {
